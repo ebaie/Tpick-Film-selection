@@ -1,0 +1,9 @@
+node_modules/
+release/
+test-output/
+test-photos/
+assets/
+lib/
+models/
+renderer/vendor/
+*.log
