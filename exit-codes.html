@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>安装程序退出代码说明 · 快调</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --accent: #5b8cff; --text: #e8eaed; --dim: #9aa1ad; --line: #262c38; }
+  body { font-family: system-ui, "Microsoft YaHei", "PingFang SC", sans-serif; background: #0f1115; color: var(--text); line-height: 1.8; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .date { color: var(--dim); font-size: 13px; margin-bottom: 36px; }
+  h2 { font-size: 19px; margin: 32px 0 12px; color: var(--accent); }
+  p, li, td, th { color: var(--dim); font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { border: 1px solid var(--line); padding: 10px 14px; text-align: left; }
+  th { color: var(--text); background: rgba(91,140,255,.08); }
+  code { background: #1a1e27; padding: 2px 8px; border-radius: 6px; color: #7ea6ff; }
+  .highlight { border: 1px solid rgba(91,140,255,.35); border-radius: 12px; padding: 16px 18px; background: rgba(91,140,255,.06); margin: 20px 0; color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>快调 · 安装程序退出代码说明</h1>
+  <p class="date">更新日期:2026 年 8 月 31 日</p>
+
+  <div class="highlight">
+    <strong>注:</strong>快调根据 Microsoft Store 要求以 <strong>MSIX</strong> 格式交付,不包含传统 EXE 安装程序。
+    此页面为符合商店提交规范而提供退出代码参考,MSIX 安装由 Windows 系统负责,通常返回 <code>0</code>(成功)。
+  </div>
+
+  <h2>退出代码</h2>
+  <table>
+    <tr><th>返回代码</th><th>含义</th></tr>
+    <tr><td><code>0</code></td><td>安装成功</td></tr>
+    <tr><td><code>1</code></td><td>安装失败(一般错误)</td></tr>
+    <tr><td><code>2</code></td><td>系统环境不满足(版本/位数/权限)</td></tr>
+    <tr><td><code>3</code></td><td>磁盘空间不足</td></tr>
+    <tr><td><code>4</code></td><td>安装被用户取消</td></tr>
+    <tr><td><code>5</code></td><td>校验/签名失败</td></tr>
+  </table>
+
+  <h2>说明</h2>
+  <p>
+    <ul>
+      <li>MSIX 安装统一由 Windows 系统管理,成功返回 <code>0</code>;失败由系统给出错误提示,不产生自定义返回代码。</li>
+      <li>此表主要为符合微软商店对 EXE 安装程序的返回代码文档要求,供审核参考。</li>
+      <li>遇到任何安装问题,请通过 Microsoft Store 页面联系开发者。</li>
+    </ul>
+  </p>
+</div>
+</body>
+</html>
