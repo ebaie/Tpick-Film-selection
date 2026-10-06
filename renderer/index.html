@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: model:; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' file: 'unsafe-eval'; connect-src 'self' file: model: data:">
+  <title>快调 · 摄影师自动选片</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside id="sidebar" class="sidebar" aria-label="主导航">
+    <div class="sidebar-brand">
+      <div class="sidebar-mark">快<span>调</span></div>
+      <div class="sidebar-subtitle">TPICK · FILM SELECTION</div>
+    </div>
+    <nav class="side-nav">
+      <button class="side-nav-item active" id="nav-workbench" data-nav="workbench" type="button" title="工作台">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span data-i18n="navWorkbench">工作台</span>
+      </button>
+      <button class="side-nav-item" id="nav-scan" data-nav="scan" type="button" title="智能检测">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/><path d="M8 11h6"/></svg>
+        <span data-i18n="navScan">智能检测</span>
+      </button>
+      <button class="side-nav-item" id="nav-results" data-nav="results" type="button" title="筛选结果">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 5h14l-2.5 4L18 13H4"/></svg>
+        <span data-i18n="navResults">筛选结果</span>
+      </button>
+      <button class="side-nav-item" id="nav-settings" data-nav="settings" type="button" title="检测设置">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg>
+        <span data-i18n="navSettings">检测设置</span>
+      </button>
+    </nav>
+    <div class="sidebar-spacer"></div>
+    <button class="donation-nav" id="btn-donate" type="button" title="支持作者" aria-label="支持作者" data-i18n-aria-label="donateNav">
+      <span class="donation-icon">♥</span>
+      <span><strong data-i18n="donateNav">支持作者</strong><small data-i18n="donateNavSub">请作者喝杯奶茶</small></span>
+      <span class="donation-arrow">›</span>
+    </button>
+    <div class="sidebar-footer" data-i18n="sidebarFoot">离线运行 · 照片不上传</div>
+  </aside>
+  <div class="app-content">
+  <header class="toolbar">
+    <div class="brand">
+      <span class="logo">快调<span class="dot"></span></span>
+      <span class="version">V1.3</span>
+    </div>
+
+    <div class="controls">
+      <button id="btn-pick" class="btn primary">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        选择照片
+      </button>
+      <button id="btn-scan" class="btn" disabled>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        开始分析
+      </button>
+      <button id="btn-export" class="btn" disabled>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        导出合格片
+      </button>
+    </div>
+
+    <div class="toolbar-right">
+      <button id="btn-plugins" class="btn" title="插件">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        插件
+      </button>
+      <button id="btn-settings" class="btn" title="检测阈值">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        阈值
+      </button>
+      <button id="btn-reset" class="btn ghost small" disabled>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        清空
+      </button>
+      <button id="btn-log" class="btn ghost small" title="日志">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <span data-i18n="log">日志</span>
+      </button>
+      <button id="btn-lang" class="btn ghost small" title="切换语言">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="lang-label">EN</span>
+      </button>
+      <div class="win-btns">
+        <button id="btn-win-min" class="win-btn" title="最小化">
+          <svg viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="5.5" width="10" height="1.2" rx="0.6"/></svg>
+        </button>
+        <button id="btn-win-close" class="win-btn win-close" title="关闭">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="plugins-panel" class="settings-panel" hidden>
+      <div class="settings-title" data-i18n="pluginTitle">插件</div>
+      <div id="plugins-list" class="plugins-list"><div class="plugin-empty">放在插件文件夹的 .js 插件会自动出现在这里</div></div>
+      <div id="plugins-foot" class="license-foot"></div>
+    </div>
+
+    <div id="settings-panel" class="settings-panel" hidden>
+      <div class="settings-title" data-i18n="settingsTitle">检测标准</div>
+      <label class="slider-item">
+        <span data-i18n="lblBlur">模糊</span>
+        <input type="range" id="blur-threshold" min="0" max="4" step="1" value="2" />
+        <span id="blur-val" class="slider-val">标准</span>
+      </label>
+      <label class="slider-item">
+        <span data-i18n="lblOver">过曝</span>
+        <input type="range" id="over-threshold" min="0" max="4" step="1" value="2" />
+        <span id="over-val" class="slider-val">标准</span>
+      </label>
+      <label class="slider-item">
+        <span data-i18n="lblUnder">欠曝</span>
+        <input type="range" id="under-threshold" min="0" max="4" step="1" value="2" />
+        <span id="under-val" class="slider-val">标准</span>
+      </label>
+      <label class="slider-item">
+        <span data-i18n="lblDark">过暗</span>
+        <input type="range" id="dark-threshold" min="0" max="4" step="1" value="2" />
+        <span id="dark-val" class="slider-val">标准</span>
+      </label>
+      <label class="slider-item">
+        <span data-i18n="lblFocus">虚焦</span>
+        <input type="range" id="focus-threshold" min="0" max="4" step="1" value="2" />
+        <span id="focus-val" class="slider-val">标准</span>
+      </label>
+      <label class="slider-item">
+        <span data-i18n="lblEye">闭眼</span>
+        <input type="range" id="eye-threshold" min="0" max="4" step="1" value="2" />
+        <span id="eye-val" class="slider-val">标准</span>
+      </label>
+      <label class="select-item" for="detect-mode">
+        <span data-i18n="detectMode">检测模式</span>
+        <select id="detect-mode" class="settings-select">
+          <option value="standard" data-i18n="detectModeStandard">标准</option>
+          <option value="fine" data-i18n="detectModeFine">精细</option>
+        </select>
+      </label>
+      <button id="btn-threshold-reset" class="btn small settings-reset" type="button" data-i18n="thresholdReset">恢复默认阈值</button>
+      <div class="settings-title sep" data-i18n="exportLoc">导出位置</div>
+      <div class="export-row">
+        <input id="export-path" class="export-path" data-i18n-placeholder="exportPh" placeholder="留空则每次手动选择" spellcheck="false" />
+        <button id="btn-export-path" class="btn small" data-i18n="browse">浏览</button>
+      </div>
+      <button id="btn-tour" class="btn small tour-link" data-i18n="tourView">查看新手教程</button>
+    </div>
+  </header>
+
+  <!-- 废片筛选栏（分析完成后出现） -->
+  <div id="filter-bar" class="filter-bar" hidden>
+    <div class="filter-chips" role="group" aria-label="照片筛选">
+      <button class="chip active" data-f="all" data-i18n="chipAll">全部</button>
+      <button class="chip" data-f="kept" data-i18n="chipKept">合格</button>
+      <button class="chip" data-f="rejected" data-i18n="chipRejected">废片</button>
+      <button class="chip" data-f="failed" data-i18n="chipFailed">读取失败</button>
+      <button class="chip" data-f="blur" data-i18n="chipBlur">模糊</button>
+      <button class="chip" data-f="focus" data-i18n="chipFocus">虚焦</button>
+      <button class="chip" data-f="over" data-i18n="chipOver">过曝</button>
+      <button class="chip" data-f="under" data-i18n="chipUnder">欠曝</button>
+      <button class="chip" data-f="eye" data-i18n="chipEye">闭眼</button>
+      <button class="chip" data-f="dark" data-i18n="chipDark">过暗</button>
+    </div>
+    <div class="filter-tools">
+      <label class="sort-label" for="sort-order" data-i18n="sortLabel">排序</label>
+      <select id="sort-order" class="sort-select">
+        <option value="import" data-i18n="sortImport">导入顺序</option>
+        <option value="quality-desc" data-i18n="sortQualityDesc">质量从高到低</option>
+        <option value="quality-asc" data-i18n="sortQualityAsc">质量从低到高</option>
+        <option value="name" data-i18n="sortName">文件名</option>
+      </select>
+      <button id="btn-report" class="btn small report-btn" type="button" data-i18n="report">导出报告</button>
+    </div>
+  </div>
+
+  <section id="quality-overview" class="quality-overview" aria-labelledby="quality-overview-title">
+    <div class="overview-heading">
+      <div>
+        <p class="eyebrow" data-i18n="overviewEyebrow">当前批次</p>
+        <h2 id="quality-overview-title" data-i18n="overviewTitle">质量概览</h2>
+      </div>
+      <span class="overview-status" id="overview-status" data-i18n="overviewReady">等待导入照片</span>
+    </div>
+    <div class="overview-grid">
+      <article class="overview-card">
+        <span class="overview-label" data-i18n="overviewTotal">总照片</span>
+        <strong id="overview-total" class="overview-value">0</strong>
+      </article>
+      <article class="overview-card">
+        <span class="overview-label" data-i18n="overviewAnalyzed">已分析</span>
+        <strong id="overview-analyzed" class="overview-value">0</strong>
+      </article>
+      <article class="overview-card accent-card">
+        <span class="overview-label" data-i18n="overviewKept">合格率</span>
+        <strong id="overview-kept" class="overview-value">—</strong>
+      </article>
+      <article class="overview-card">
+        <span class="overview-label" data-i18n="overviewScore">平均质量</span>
+        <strong id="overview-score" class="overview-value">—</strong>
+      </article>
+      <article class="overview-card issue-card">
+        <span class="overview-label" data-i18n="overviewIssue">主要问题</span>
+        <strong id="overview-issue" class="overview-value overview-issue-value" data-i18n="overviewNoIssue">暂无</strong>
+      </article>
+    </div>
+  </section>
+
+  <main id="dropzone" class="dropzone">
+    <div class="drop-hint" id="drop-hint">
+      <div class="drop-icon">
+        <svg width="72" height="54" viewBox="0 0 72 54" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="68" height="50" rx="8"/>
+          <path d="M2 38 L22 20 L34 30 L48 16 L70 38"/>
+          <circle cx="52" cy="13" r="4.5"/>
+        </svg>
+      </div>
+      <p class="hint-title" data-i18n="hintTitle">拖入照片，开始选片</p>
+      <p class="hint-sub" data-i18n="hintSub">支持 JPG / PNG / WEBP / TIFF · 原片不会被修改</p>
+    </div>
+    <div class="grid" id="grid" hidden></div>
+  </main>
+
+  <footer class="statusbar">
+    <span id="status" data-i18n="readyInitial">就绪</span>
+    <span id="stats"></span>
+  </footer>
+  </div>
+
+  <!-- 日志面板 -->
+  <div id="log-overlay" class="modal-overlay" hidden>
+    <div class="log-box">
+      <div class="log-head">
+        <span data-i18n="logTitle">运行日志</span>
+        <button id="log-close" class="license-close">×</button>
+      </div>
+      <div id="log-list" class="log-list"></div>
+      <div class="log-foot" data-i18n="logHint">最多保留最近 100 条记录</div>
+    </div>
+  </div>
+
+  <!-- 新手引导（首次启动） -->
+  <div id="tour" class="tour" hidden>
+    <div class="tour-mask"></div>
+    <div id="tour-spot" class="tour-spot"></div>
+    <div class="tour-card">
+      <div class="tour-arrow"></div>
+      <div id="tour-step" class="tour-step"></div>
+      <div id="tour-title" class="tour-title"></div>
+      <div id="tour-desc" class="tour-desc"></div>
+      <div class="tour-btns">
+        <button id="tour-skip" class="btn ghost small">跳过</button>
+        <button id="tour-next" class="btn primary small">下一步</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 清空确认 -->
+  <div id="confirm-overlay" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <p class="modal-title" data-i18n="confirmTitle">确认清空</p>
+      <p class="modal-text" data-i18n="confirmText">将清空所有照片和分析结果，确定继续吗？</p>
+      <div class="modal-btns">
+        <button id="confirm-cancel" class="btn ghost" data-i18n="cancel">取消</button>
+        <button id="confirm-ok" class="btn danger" data-i18n="confirmOk">确认清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 照片放大查看 -->
+  <div id="viewer" class="viewer" hidden>
+    <button id="viewer-close" class="viewer-close" title="关闭">✕</button>
+    <img id="viewer-img" class="viewer-img" alt="" />
+    <div id="viewer-name" class="viewer-name"></div>
+  </div>
+
+  <!-- 导出完成提示 -->
+  <div id="export-done" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <p class="modal-title" data-i18n="exportDoneTitle">导出完成</p>
+      <p id="export-done-info" class="modal-text" style="white-space:pre-line"></p>
+      <div class="modal-btns">
+        <button id="export-open" class="btn primary" data-i18n="openFolder">打开文件夹</button>
+        <button id="export-close" class="btn ghost" data-i18n="close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右键菜单 -->
+  <div id="ctx-menu" class="ctx-menu" hidden>
+    <button id="ctx-analyze" class="ctx-item" data-i18n="ctxAnalyze">单独分析</button>
+    <button id="ctx-export" class="ctx-item" data-i18n="ctxExport">单独导出</button>
+    <button id="ctx-remark" class="ctx-item" data-i18n="ctxRemark">备注</button>
+    <button id="ctx-remove" class="ctx-item danger" data-i18n="ctxRemove">移除列表</button>
+  </div>
+
+  <!-- 备注输入 -->
+  <div id="remark-overlay" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <p class="modal-title" data-i18n="remarkTitle">照片备注</p>
+      <input id="remark-input" class="license-input" data-i18n-placeholder="remarkPh" placeholder="输入备注，显示在照片名称位置" spellcheck="false" />
+      <div class="modal-btns">
+        <button id="remark-cancel" class="btn ghost" data-i18n="cancel">取消</button>
+        <button id="remark-ok" class="btn primary" data-i18n="save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 支持作者 -->
+  <div id="donation-overlay" class="modal-overlay donation-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="donation-title">
+    <div class="donation-box">
+      <button id="donation-close" class="license-close" type="button" title="关闭" aria-label="关闭捐赠窗口">×</button>
+      <div class="donation-heart">♥</div>
+      <p id="donation-title" class="modal-title" data-i18n="donateTitle">如果觉得 App 还不错</p>
+      <p class="donation-copy"><span data-i18n="donateText">支持作者一杯奶茶吧</span> ☕<br><span data-i18n="donateSub">你的支持会帮助我们继续优化检测和体验</span></p>
+      <div class="donation-qr-frame"><img class="donation-qr" src="../assets/donation-qr.jpg" alt="微信收款二维码" /></div>
+      <p class="donation-foot" data-i18n="donateFoot">使用微信扫一扫即可支持</p>
+    </div>
+  </div>
+
+  <script src="../lib/detectors.js"></script>
+  <script src="vendor/face-api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
