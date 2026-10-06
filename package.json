@@ -1,0 +1,64 @@
+{
+  "name": "photo-culler",
+  "version": "1.3.2",
+  "description": "摄影师自动选片工具：一键标记模糊/过曝/欠曝/闭眼废片",
+  "main": "main.js",
+  "author": "kuaixuan",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/detectors.test.js && node test/license.test.mjs && node test/api.test.mjs",
+    "dist-portable": "electron-builder --win portable",
+    "dist-store": "electron-builder --win appx"
+  },
+  "build": {
+    "appId": "com.kuaixuan.photoculler",
+    "productName": "快调",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "license.js",
+      "renderer/**/*",
+      "lib/**/*",
+      "models/**/*",
+      "assets/**/*",
+      "!worker/**/*",
+      "!test/**/*",
+      "!test-photos/**/*",
+      "!test-output/**/*",
+      "!site/**/*",
+      "!diag-*.js",
+      "!gen-*.js",
+      "edition.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon-store.png"
+    },
+    "appx": {
+      "identityName": "Tpick.60607D9B25E67",
+      "publisher": "CN=440E0C11-AB27-481B-B765-05F4324B62C4",
+      "displayName": "快调选片",
+      "publisherDisplayName": "Tpick",
+      "applicationId": "KuaixuanPicker",
+      "backgroundColor": "#151A25"
+    }
+  },
+  "dependencies": {
+    "@vladmandic/face-api": "^1.7.15"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}
