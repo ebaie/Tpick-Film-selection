@@ -7,3 +7,4 @@ lib/
 models/
 renderer/vendor/
 *.log
+build/appx-stage*/
