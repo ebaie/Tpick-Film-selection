@@ -870,6 +870,18 @@ button, select { -webkit-app-region: no-drag; }
 .log-list .log-empty { color: var(--text-faint); text-align: center; padding: 24px 0; border: none; }
 .log-foot { padding: 8px 16px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--text-faint); }
 
+/* 开源许可正文（第三方声明：Apache-2.0 / MIT 要求随分发可查） */
+.lic-text {
+  margin: 0;
+  padding: 14px 18px;
+  overflow: auto;
+  max-height: 62vh;
+  font: 11px/1.6 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-faint);
+}
+
 /* ---------- 新手引导 ---------- */
 .tour { position: fixed; inset: 0; z-index: 300; }
 .tour-mask {
