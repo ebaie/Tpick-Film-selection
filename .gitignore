@@ -4,3 +4,5 @@ test-output/
 test-photos/
 *.log
 build/appx-stage*/
+# MediaPipe WASM 运行时（由 npm 依赖提供，构建前用 npm run vendor 复制）
+renderer/vendor/mediapipe/
