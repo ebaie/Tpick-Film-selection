@@ -33,6 +33,7 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   if (process.argv.includes('--smoke')) runSmoke();
   if (process.argv.includes('--flow')) runFlow();
+  if (process.argv.includes('--face-check')) runFaceCheck(process.argv[process.argv.indexOf('--face-check') + 1]);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -88,7 +89,49 @@ async function runFlow() {
       return out;
     })()`);
     console.log('FLOW_RESULT', JSON.stringify(res));
+    try {
+      const fsm = require('fs');
+      fsm.mkdirSync(path.join(__dirname, 'test-output'), { recursive: true });
+      fsm.writeFileSync(path.join(__dirname, 'test-output', 'flow.json'), JSON.stringify(res, null, 2));
+    } catch (e) { console.error('FLOW_WRITE_ERROR', e.message); }
     setTimeout(() => app.quit(), 300);
+  });
+}
+
+// 闭眼检测验收：electron . --face-check <图片目录>
+// 结果同时落盘到 test-output/face-check.json —— Windows 上 Electron 的 stdout 不可靠（GUI 子系统不接父控制台）
+async function runFaceCheck(dir) {
+  const outDir = path.join(__dirname, 'test-output');
+  const outPath = path.join(outDir, 'face-check.json');
+  try { fs.mkdirSync(outDir, { recursive: true }); fs.writeFileSync(path.join(outDir, 'face-check-start.txt'), 'called at ' + new Date().toISOString() + ' dir=' + String(dir)); } catch (_) {}
+  mainWindow.webContents.once('did-finish-load', async () => {
+    const result = { at: new Date().toISOString(), dir: dir || null, face: null, items: [], error: null };
+    try {
+      if (!dir || !fs.existsSync(dir)) throw new Error('目录不存在: ' + dir);
+      const files = fs.readdirSync(dir)
+        .filter((f) => /\.(jpe?g|png|bmp|webp)$/i.test(f))
+        .map((f) => path.join(dir, f));
+      const res = await mainWindow.webContents.executeJavaScript(`(async () => {
+        const diag = window.__kxDiag;
+        if (!diag) return { error: '__kxDiag 未注入（renderer 未加载完成？）' };
+        const face = await diag.waitFace(20000);
+        const items = [];
+        for (const f of ${JSON.stringify(files)}) {
+          try { items.push(await diag.probe(f)); }
+          catch (e) { items.push({ file: f, error: String((e && e.message) || e) }); }
+        }
+        return { face: face, items: items };
+      })()`);
+      Object.assign(result, res);
+    } catch (e) {
+      result.error = String((e && e.message) || e);
+    }
+    try {
+      fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+    } catch (e) { console.error('FACE_CHECK_WRITE_ERROR', e.message); }
+    console.log('FACE_CHECK_RESULT', JSON.stringify(result));
+    setTimeout(() => app.quit(), 200);
   });
 }
 
@@ -109,16 +152,14 @@ async function runSmoke() {
         const id = ctx.getImageData(0, 0, 256, 256);
         let faceState = 'n/a';
         let fetchTest = 'n/a';
-        if (typeof faceapi === 'object') {
+        if (window.__kxDiag) {
           try {
-            const r = await fetch('model://local/tiny_face_detector_model-weights_manifest.json');
-            fetchTest = r.status + ':' + (await r.text()).slice(0, 30);
+            const r = await fetch('model://local/face_landmarker.task');
+            fetchTest = r.status + ':' + (r.headers.get('content-length') || '?');
           } catch (e) { fetchTest = 'err:' + e.message; }
           try {
-            await faceapi.nets.tinyFaceDetector.loadFromUri('model://local');
-            await faceapi.nets.faceLandmark68TinyNet.loadFromUri('model://local');
-            const det = await faceapi.detectSingleFace(c, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 })).withFaceLandmarks();
-            faceState = det ? 'found' : 'none';
+            const f = await window.__kxDiag.waitFace(20000);
+            faceState = (f && f.ready) ? 'ready' : ('notready:' + ((f && f.status) || '?'));
           } catch (e) { faceState = 'error:' + e.message; }
         }
         // 内置示例照片检测验证（全部 20 张）
@@ -145,7 +186,7 @@ async function runSmoke() {
         return {
           hasApi: typeof window.api === 'object',
           hasDetectors: typeof Detectors === 'object',
-          hasFaceapi: typeof faceapi === 'object',
+          hasEyeModel: !!(window.__kxDiag),
           fetchTest: fetchTest,
           faceState: faceState,
           samplesPreview: samples,
@@ -155,6 +196,10 @@ async function runSmoke() {
         };
       })()`);
       console.log('SMOKE_RESULT', JSON.stringify(res));
+      try {
+        fs.mkdirSync(path.join(__dirname, 'test-output'), { recursive: true });
+        fs.writeFileSync(path.join(__dirname, 'test-output', 'smoke.json'), JSON.stringify(res, null, 2));
+      } catch (e) { console.error('SMOKE_WRITE_ERROR', e.message); }
     } catch (e) {
       console.error('SMOKE_ERROR', e.message);
       process.exitCode = 1;
@@ -338,6 +383,7 @@ ipcMain.handle('save-report', async (_e, csv) => {
 });
 
 app.whenReady().then(() => {
+  try { fs.mkdirSync(path.join(__dirname, 'test-output'), { recursive: true }); fs.writeFileSync(path.join(__dirname, 'test-output', 'argv.txt'), JSON.stringify(process.argv)); } catch (_) {}
   // 测试模式（npm start 带 --reset-license）：每次启动重置授权，便于反复测试激活流程
   if (process.argv.includes('--reset-license')) {
     try {
