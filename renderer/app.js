@@ -45,7 +45,7 @@
   const UNDER_LEVELS = [10, 25, 40, 55, 70];
   const DARK_LEVELS = [130, 110, 90, 70, 50];   // 过暗：平均亮度低于该值判过暗
   const FOCUS_LEVELS = [0.4, 0.5, 0.6, 0.75, 0.85];  // 虚焦：中央（主体）模糊块比例达到该值判虚焦（默认标准 0.6）
-  const EAR_LEVELS = [0.15, 0.18, 0.2, 0.22, 0.25];  // 闭眼：双眼 EAR 低于该值判闭眼
+  const EYE_PROB_LEVELS = [0.60, 0.72, 0.80, 0.87, 0.93];  // 闭眼概率阈值（档位0=最严格，标记最多；档位2=模型建议值）
 
   let files = [];      // [{path, name}]
   let results = [];    // [{path, name, thumbUrl, metrics, reasons, kept, manual}]
@@ -61,66 +61,156 @@
   let viewerIndex = -1;
   let faceTask = null;
 
-  // ---------- 闭眼检测（face-api） ----------
+  // ---------- 闭眼检测（MediaPipe 人脸网格 + OCEC 单眼分类 + 融合逻辑回归） ----------
+  // 口径：只有"双眼都可见地闭合"才算闭眼（单眼闭 = 睁眼）
   let faceReady = false;
+  let faceStatus = '初始化中';   // 供界面与日志显示，避免"静默失效"
+  let faceLandmarker = null;
+  let ocecNet = null;
+  let eyeModel = null;
+  const OCEC_EW = 40, OCEC_EH = 24;      // OCEC 输入尺寸（宽x高）
+  const EYE_PADS = [1.5, 1.7, 2.0];      // 眼框余量：多档投票，抗关键点定位误差
+  const MP_WASM_DIR = 'vendor/mediapipe';
+  const MP_MODEL_URL = 'model://local/face_landmarker.task';
+
   async function initFace() {
     try {
-      // 加载超时保护：模型加载挂起时不阻塞后续
-      const loaded = await Promise.race([
-        Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('model://local'),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri('model://local')
-        ]),
-        new Promise((r) => setTimeout(() => r('__timeout__'), 8000))
+      const mp = await Promise.race([
+        window.__MP_READY || Promise.reject(new Error('MediaPipe 引导脚本缺失')),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('MediaPipe 运行时加载超时')), 20000))
       ]);
-      if (loaded === '__timeout__') { console.warn('人脸模型加载超时（闭眼检测将跳过）'); return; }
-      // 强制 CPU 推理后端：避免 WebGL 上下文在大量画布操作后退化导致推理挂起/极慢
-      try {
-        if (faceapi.tf && faceapi.tf.setBackend) {
-          await faceapi.tf.setBackend('cpu');
-        }
-      } catch (e) { console.warn('人脸推理后端切换失败:', e.message); }
+      const fileset = await mp.FilesetResolver.forVisionTasks(MP_WASM_DIR);
+      faceLandmarker = await mp.FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MP_MODEL_URL, delegate: 'CPU' },
+        runningMode: 'IMAGE',
+        numFaces: 1,
+        outputFaceBlendshapes: true,
+        minFaceDetectionConfidence: 0.3
+      });
+      const [graphTxt, weights, modelTxt] = await Promise.all([
+        fetch('model://local/ocec_s_graph.json').then((r) => r.text()),
+        fetch('model://local/ocec_s_weights.bin').then((r) => r.arrayBuffer()),
+        fetch('model://local/eye_ensemble_5f.json').then((r) => r.text())
+      ]);
+      ocecNet = window.OcecNet.fromBuffers(graphTxt, weights);
+      eyeModel = JSON.parse(modelTxt);
       faceReady = true;
-      console.log('人脸模型加载成功（CPU 推理）');
+      faceStatus = '闭眼模型已就绪';
+      console.log('闭眼模型加载成功：MediaPipe 网格 + OCEC(纯 JS) + 融合回归');
     } catch (err) {
-      console.error('人脸模型加载失败（闭眼检测将跳过）:', err);
       faceReady = false;
+      faceStatus = '闭眼模型加载失败：' + ((err && err.message) || err);
+      console.error(faceStatus); log(faceStatus);
     }
   }
   initFace();
 
-  function earOf(pts) {
-    const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-    const width = d(pts[0], pts[3]);
-    return width > 0 ? (d(pts[1], pts[5]) + d(pts[2], pts[4])) / (2 * width) : null;
+  // ---------- 眼部几何特征与眼框裁剪 ----------
+  // MediaPipe 网格索引：左眼 外33/内133/上159/下145，右眼 内362/外263/上386/下374
+  const EYE_IDX = { L: [33, 133, 159, 145], R: [263, 362, 386, 374] };
+
+  // 网格开合度（越小越像闭眼）：|下眼睑-上眼睑| / 眼宽
+  function opennessOf(lm) {
+    const out = {};
+    for (const side of ['L', 'R']) {
+      const p = EYE_IDX[side];
+      const w = Math.abs(lm[p[0]].x - lm[p[1]].x);
+      out[side] = w > 1e-6 ? Math.abs(lm[p[3]].y - lm[p[2]].y) / w : 0;
+    }
+    return out;
   }
 
-  // 检测主脸双眼 EAR（睁眼约 0.25-0.35，闭眼约 0.1-0.15）；无脸/出错/超时返回 null
-  async function eyeEAR(canvas) {
-    // A timed-out inference may still be running. Do not accumulate background tasks.
-    if (!faceReady || faceTask) return null;
-    let timer;
+  function eyeBox(lm, W, H, side, pad) {
+    const p = EYE_IDX[side];
+    const x1 = lm[p[0]].x * W, y1 = lm[p[0]].y * H;
+    const x2 = lm[p[1]].x * W, y2 = lm[p[1]].y * H;
+    const yUp = lm[p[2]].y * H, yLow = lm[p[3]].y * H;
+    const cx = (x1 + x2) / 2;
+    const cy = ((y1 + y2) / 2 + (yUp + yLow) / 2) / 2;
+    const span = Math.hypot(x2 - x1, y2 - y1);
+    const w = Math.max(10, span * pad);
+    const h = w * OCEC_EH / OCEC_EW;
+    return { x: cx - w / 2, y: cy - h / 2, w: w, h: h };
+  }
+
+  let eyeCanvas = null, eyeCtx = null;
+  // 眼框 → OCEC 输入（NCHW，3x24x40，归一化 0..1）
+  function cropEye(canvas, box) {
+    if (!eyeCanvas) {
+      eyeCanvas = document.createElement('canvas');
+      eyeCanvas.width = OCEC_EW; eyeCanvas.height = OCEC_EH;
+      eyeCtx = eyeCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    const SW = canvas.width, SH = canvas.height;
+    const sx = Math.max(0, Math.min(SW - 2, Math.round(box.x)));
+    const sy = Math.max(0, Math.min(SH - 2, Math.round(box.y)));
+    const ex = Math.max(sx + 2, Math.min(SW, Math.round(box.x + box.w)));
+    const ey = Math.max(sy + 2, Math.min(SH, Math.round(box.y + box.h)));
+    eyeCtx.drawImage(canvas, sx, sy, ex - sx, ey - sy, 0, 0, OCEC_EW, OCEC_EH);
+    const d = eyeCtx.getImageData(0, 0, OCEC_EW, OCEC_EH).data;
+    const HW = OCEC_EW * OCEC_EH;
+    const out = new Float32Array(3 * HW);
+    for (let i = 0, p = 0; i < HW; i++, p += 4) {
+      out[i] = d[p] / 255;
+      out[HW + i] = d[p + 1] / 255;
+      out[2 * HW + i] = d[p + 2] / 255;
+    }
+    return out;
+  }
+
+  function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+  // 融合模型：5 维特征 → 闭眼概率（权重见 models/eye_ensemble_5f.json）
+  function predictEye(feat, model) {
+    let z = model.intercept;
+    for (let i = 0; i < feat.length; i++) {
+      z += model.coef[i] * ((feat[i] - model.mean[i]) / (model.std[i] || 1e-6));
+    }
+    return sigmoid(z);
+  }
+
+  // ---------- 单张照片的闭眼判定 ----------
+  async function eyeScore(canvas) {
+    if (!faceReady || faceTask || !faceLandmarker || !ocecNet || !eyeModel) return null;
+    const task = (async () => {
+      const res = faceLandmarker.detect(canvas);
+      const lms = res && res.faceLandmarks && res.faceLandmarks[0];
+      if (!lms) return { noFace: true };
+      const cats = (res.faceBlendshapes && res.faceBlendshapes[0] && res.faceBlendshapes[0].categories) || [];
+      let blinkL = 0, blinkR = 0;
+      for (const c of cats) {
+        if (c.categoryName === 'eyeBlinkLeft') blinkL = c.score;
+        else if (c.categoryName === 'eyeBlinkRight') blinkR = c.score;
+      }
+      const open = opennessOf(lms);
+      const W = canvas.width, H = canvas.height;
+      let sumL = 0, sumR = 0, n = 0;
+      for (const pad of EYE_PADS) {
+        sumL += ocecNet.run(cropEye(canvas, eyeBox(lms, W, H, 'L', pad)));
+        sumR += ocecNet.run(cropEye(canvas, eyeBox(lms, W, H, 'R', pad)));
+        n++;
+      }
+      const ocecL = sumL / n, ocecR = sumR / n;
+      const feat = [
+        Math.min(blinkL, blinkR), Math.max(blinkL, blinkR),
+        Math.min(open.L, open.R), Math.max(open.L, open.R),
+        Math.max(ocecL, ocecR)
+      ];
+      return {
+        p: predictEye(feat, eyeModel),
+        feat: feat,
+        blink: { L: blinkL, R: blinkR },
+        openness: open,
+        ocec: { L: ocecL, R: ocecR }
+      };
+    })();
+    faceTask = task;
+    const release = () => { if (faceTask === task) faceTask = null; };
+    task.then(release, release);
     try {
-      const task = Promise.resolve(faceapi
-        .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: detectMode === 'fine' ? 320 : 224 }))
-        .withFaceLandmarks());
-      faceTask = task;
-      const release = () => { if (faceTask === task) faceTask = null; };
-      task.then(release, release);
-      const res = await Promise.race([
-        task,
-        new Promise((r) => { timer = setTimeout(() => r('__timeout__'), 4000); })
-      ]);
-      if (res === '__timeout__') { console.warn('闭眼检测超时，跳过'); return null; }
-      if (!res) return null;
-      const left = earOf(res.landmarks.getLeftEye());
-      const right = earOf(res.landmarks.getRightEye());
-      return left === null || right === null ? null : (left + right) / 2;
+      return await task;
     } catch (err) {
       console.error('闭眼检测错误:', err);
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -137,7 +227,7 @@
       under: UNDER_LEVELS[+underSlider.value],
       dark: DARK_LEVELS[+darkSlider.value],
       focus: FOCUS_LEVELS[+focusSlider.value],
-      eye: EAR_LEVELS[+eyeSlider.value]
+      eye: EYE_PROB_LEVELS[+eyeSlider.value]
     };
   }
   function updateSliderLabels() {
@@ -162,7 +252,10 @@
     }
     if (m.overRatio * 100 > thr.over) reasons.push('over');
     if (m.underRatio * 100 > thr.under) reasons.push('under');
-    if (Number.isFinite(m.ear) && m.ear < thr.eye) reasons.push('eye');
+    // 闭眼：口径是「双眼都闭」（单眼闭=睁眼），所以比较双眼 EAR 的较大值；
+    // 头姿门控不过时不判，避免误杀好片
+    // 闭眼：融合模型给出的"双眼都闭"概率超过阈值即标记（口径见 RS-modle 数据集说明）
+    if (m.eye && Number.isFinite(m.eye.p) && m.eye.p >= thr.eye) reasons.push('eye');
     if (m.avgLuma < thr.dark) reasons.push('dark');
     // 功能插件自定义检测（插件需激活后可用）
     for (const p of plugins) {
@@ -295,7 +388,7 @@
       }
       img.src = '';
 
-      metrics.ear = await eyeEAR(fc);
+      metrics.eye = await eyeScore(fc);
       metrics.width = nw;
       metrics.height = nh;
       metrics.qualityScore = Detectors.qualityScore(metrics);
@@ -434,7 +527,7 @@
       `分析完成 · ${results.length} 张成功` +
       (failed ? `，${failed} 张读取失败` : '') +
       ` · 标记废片 ${bad} 张` +
-      (!faceReady ? ' · 闭眼检测不可用（人脸模型未加载）' : '')
+      (!faceReady ? ` · 闭眼检测不可用（${faceStatus}）` : '')
     );
     if (results.length) btnExport.disabled = false;
     // 分析完成：显示筛选栏
@@ -1337,6 +1430,15 @@
   });
   $('log-close').addEventListener('click', () => { $('log-overlay').hidden = true; });
 
+  // 开源许可：第三方组件声明（Apache-2.0 / MIT 要求随分发提供）
+  const licOverlay = $('lic-overlay');
+  $('btn-licenses').addEventListener('click', () => {
+    $('lic-text').textContent = window.KX_LICENSES_TEXT || '（未找到许可文本）';
+    licOverlay.hidden = false;
+  });
+  $('lic-close').addEventListener('click', () => { licOverlay.hidden = true; });
+  licOverlay.addEventListener('click', (e) => { if (e.target === licOverlay) licOverlay.hidden = true; });
+
   // ---------- 版本信息（正式版 / 体验版） ----------
   window.api.getEdition().then((ed) => {
     log('版本信息：v' + ed.version + (ed.store ? ' · Microsoft Store 版' : ''));
@@ -1354,7 +1456,7 @@
       chipAll: '全部', chipKept: '合格', chipRejected: '废片', chipFailed: '读取失败', chipBlur: '模糊', chipFocus: '虚焦', chipOver: '过曝', chipUnder: '欠曝', chipEye: '闭眼', chipDark: '过暗',
       sortLabel: '排序', sortImport: '导入顺序', sortQualityDesc: '质量从高到低', sortQualityAsc: '质量从低到高', sortName: '文件名', report: '导出报告', reportSaved: '报告已保存：{0}', reportFailed: '报告保存失败',
       overviewEyebrow: '当前批次', overviewTitle: '质量概览', overviewReady: '等待导入照片', overviewReadyToScan: '等待开始分析', overviewScanning: '正在分析…', overviewComplete: '分析完成', overviewTotal: '总照片', overviewAnalyzed: '已分析', overviewKept: '合格率', overviewScore: '平均质量', overviewIssue: '主要问题', overviewNoIssue: '暂无', noIssues: '暂无明显问题', awaitAnalysis: '等待分析', qualityHint: '质量 {0} · 清晰度 {1} · 亮度 {2}', statsSummary: '合格 {0} · 废片 {1} · 共 {2}',
-      detectMode: '检测模式', detectModeStandard: '标准', detectModeFine: '精细', thresholdReset: '恢复默认阈值', thresholdResetDone: '检测阈值已恢复默认', fineModeSet: '已切换为精细检测（下次分析生效）', standardModeSet: '已切换为标准检测（下次分析生效）',
+      detectMode: '检测模式', detectModeStandard: '标准', detectModeFine: '精细', thresholdReset: '恢复默认阈值', thresholdResetDone: '检测阈值已恢复默认', fineModeSet: '已切换为精细检测（下次分析生效）', standardModeSet: '已切换为标准检测（下次分析生效）', licensesBtn: '开源许可', licTitle: '开源许可与第三方声明',
       settingsTitle: '检测标准', lblBlur: '模糊', lblOver: '过曝', lblUnder: '欠曝', lblDark: '过暗', lblFocus: '虚焦', lblEye: '闭眼',
       exportLoc: '导出位置', exportPh: '留空则每次手动选择', browse: '浏览', tourView: '查看新手教程',
       pluginTitle: '插件', confirmTitle: '确认清空', confirmText: '将清空所有照片和分析结果，确定继续吗？', cancel: '取消', confirmOk: '确认清空',
@@ -1374,7 +1476,7 @@
       chipAll: 'All', chipKept: 'Good', chipRejected: 'Rejected', chipFailed: 'Failed', chipBlur: 'Blur', chipFocus: 'OOF', chipOver: 'Over', chipUnder: 'Under', chipEye: 'Eye', chipDark: 'Dark',
       sortLabel: 'Sort', sortImport: 'Import order', sortQualityDesc: 'Quality: high to low', sortQualityAsc: 'Quality: low to high', sortName: 'File name', report: 'Export report', reportSaved: 'Report saved: {0}', reportFailed: 'Could not save report',
       overviewEyebrow: 'CURRENT BATCH', overviewTitle: 'Quality overview', overviewReady: 'Waiting for photos', overviewReadyToScan: 'Ready to scan', overviewScanning: 'Scanning…', overviewComplete: 'Analysis complete', overviewTotal: 'Photos', overviewAnalyzed: 'Analyzed', overviewKept: 'Good rate', overviewScore: 'Avg. quality', overviewIssue: 'Top issue', overviewNoIssue: 'None', noIssues: 'No major issues', awaitAnalysis: 'Waiting for analysis', qualityHint: 'Quality {0} · Sharpness {1} · Brightness {2}', statsSummary: 'Good {0} · Rejected {1} · Total {2}',
-      detectMode: 'Detection mode', detectModeStandard: 'Standard', detectModeFine: 'Fine', thresholdReset: 'Reset thresholds', thresholdResetDone: 'Detection thresholds reset', fineModeSet: 'Fine detection selected (applies next scan)', standardModeSet: 'Standard detection selected (applies next scan)',
+      detectMode: 'Detection mode', detectModeStandard: 'Standard', detectModeFine: 'Fine', thresholdReset: 'Reset thresholds', thresholdResetDone: 'Detection thresholds reset', fineModeSet: 'Fine detection selected (applies next scan)', standardModeSet: 'Standard detection selected (applies next scan)', licensesBtn: 'Licenses', licTitle: 'Open source licenses and third-party notices',
       settingsTitle: 'Detection Levels', lblBlur: 'Blur', lblOver: 'Overexposed', lblUnder: 'Underexposed', lblDark: 'Dark', lblFocus: 'Out-of-focus', lblEye: 'Eyes',
       exportLoc: 'Export Folder', exportPh: 'Leave empty to choose each time', browse: 'Browse', tourView: 'View Tutorial',
       pluginTitle: 'Plugins', confirmTitle: 'Confirm Clear', confirmText: 'Clear all photos and results?', cancel: 'Cancel', confirmOk: 'Clear',
@@ -1422,6 +1524,43 @@
   });
   applyLang();
   log(lang === 'zh' ? '语言：中文' : 'Language: English');
+
+  // 诊断接口：仅供自动化测试（electron . --face-check <目录>）与排障使用，不参与正常流程
+  window.__kxDiag = {
+    face: () => ({ ready: faceReady, status: faceStatus }),
+    waitFace: (ms = 15000) => new Promise((resolve) => {
+      const t0 = Date.now();
+      const tick = () => {
+        if (faceReady || Date.now() - t0 > ms) resolve({ ready: faceReady, status: faceStatus });
+        else setTimeout(tick, 200);
+      };
+      tick();
+    }),
+    probe: async (filePath) => {
+      const img = new Image();
+      img.src = await window.api.toFileUrl(filePath);
+      await img.decode();
+      const nw = img.naturalWidth, nh = img.naturalHeight;
+      const F = 1024;
+      const r = Math.min(1, F / Math.max(nw, nh));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(nw * r));
+      c.height = Math.max(1, Math.round(nh * r));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const thr = getThresholds();
+      const eye = await eyeScore(c);
+      img.src = '';
+      return {
+        file: filePath,
+        size: nw + 'x' + nh,
+        canvas: c.width + 'x' + c.height,
+        threshold: thr.eye,
+        eye: eye,
+        eyeClosed: !!(eye && Number.isFinite(eye.p) && eye.p >= thr.eye),
+        faceStatus: faceStatus
+      };
+    }
+  };
 
   // 启动：加载插件
   loadPlugins();
