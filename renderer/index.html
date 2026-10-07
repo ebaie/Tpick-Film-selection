@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: model:; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' file: 'unsafe-eval'; connect-src 'self' file: model: data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: model:; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' file: 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' file: model: data: blob:">
   <title>快调 · 摄影师自动选片</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -137,6 +137,7 @@
         </select>
       </label>
       <button id="btn-threshold-reset" class="btn small settings-reset" type="button" data-i18n="thresholdReset">恢复默认阈值</button>
+      <button id="btn-licenses" class="btn small" type="button" data-i18n="licensesBtn">开源许可</button>
       <div class="settings-title sep" data-i18n="exportLoc">导出位置</div>
       <div class="export-row">
         <input id="export-path" class="export-path" data-i18n-placeholder="exportPh" placeholder="留空则每次手动选择" spellcheck="false" />
@@ -237,6 +238,17 @@
     </div>
   </div>
 
+  <!-- 开源许可（第三方组件声明：Apache-2.0 / MIT 要求随分发提供） -->
+  <div id="lic-overlay" class="modal-overlay" hidden>
+    <div class="log-box">
+      <div class="log-head">
+        <span data-i18n="licTitle">开源许可</span>
+        <button id="lic-close" class="license-close" type="button">×</button>
+      </div>
+      <pre id="lic-text" class="lic-text"></pre>
+    </div>
+  </div>
+
   <!-- 新手引导（首次启动） -->
   <div id="tour" class="tour" hidden>
     <div class="tour-mask"></div>
@@ -317,7 +329,9 @@
   </div>
 
   <script src="../lib/detectors.js"></script>
-  <script src="vendor/face-api.js"></script>
+  <script src="ocec.js"></script>
+  <script src="licenses.js"></script>
+  <script src="mp-boot.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
