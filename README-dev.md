@@ -14,11 +14,12 @@ npm start       # 启动应用
 
 **打包成安装包后运行**：
 ```bash
-npm run dist    # 打包
+npm run dist-portable    # 打包便携版
+npm run dist-store       # 打包商店提交用 APPX
 ```
-打包产物在 `release/` 目录，双击 `快调 Setup <版本>.exe` 安装即可。
+打包产物在 `release/` 目录，便携版 EXE 可直接运行；未签名 APPX 供 Partner Center 提交使用，终端用户从 Microsoft Store 安装微软签名的版本。
 
-打开后：上传你自己的照片（或点「试用示例照片」）即可体验筛选；试用版最多分析 20 张，导出 / 插件 / 批量需激活解锁。
+打开后：拖入（或点「选择照片」）自己的照片即可开始筛选；软件完全免费，所有功能都可直接使用。
 
 ---
 
@@ -28,16 +29,15 @@ npm run dist    # 打包
 photo-culler/
 ├── main.js            # Electron 主进程窗口
 ├── preload.js         # 预加载（安全暴露 API）
-├── license.js         # 授权相关（内部）
-├── renderer/          # 软件界面（HTML/CSS/JS）+ 人脸检测库
+├── renderer/          # 软件界面（HTML/CSS/JS）+ MediaPipe 运行时 + 眼部模型
 ├── lib/detectors.js   # 模糊 / 曝光检测算法
-├── models/            # 人脸模型（本地，无需联网）
-├── worker/            # 激活服务（内部）
-├── assets/samples/    # 内置 20 张示例照片
-├── site/index.html    # 官网落地页
-├── test/              # 单元测试 + 冒烟测试
-├── test-photos/       # 生成的测试图片
-└── build/icon.png     # 应用图标
+├── models/            # 人脸 / 眼部模型（本地，无需联网）
+├── assets/plugins/    # 内置插件（眼部检测、精细检测、青绿主题）
+├── scripts/           # 运行时下载、商店图标生成
+├── test/              # 单元测试（npm test）+ 冒烟测试
+├── test-photos/       # 生成的测试图片（test/gen-test-photos.js）
+├── build/             # 应用图标与商店图标
+└── licenses/          # 开源许可与第三方声明
 ```
 
 ---
@@ -57,9 +57,9 @@ photo-culler/
     name: '我的插件',
     version: '1.0',
     type: 'theme',          // 'theme'（主题）或 'feature'（功能检测）
-    css: ':root { --accent: #4dbfa5; }',   // 主题插件：注入的 CSS
+    css: ':root { --accent: #4dbfa5; } body[data-theme="dark"] { --accent: #35c0a8; }',   // 主题插件：注入的 CSS
     detect: function (m) {   // 功能插件：m = { blurScore, overRatio, underRatio, avgLuma, eyeClosed }
-      if (m.avgLuma < 40) return { reason: 'dark', label: '过暗' };
+      if (m.avgLuma < 40) return { reason: 'tooTight', label: '欠曝过度' };
       return null;           // 返回 {reason,label} 新增一条废片标记；null 则不加
     }
   };
@@ -67,8 +67,9 @@ photo-culler/
 ```
 
 - `type: 'theme'` + `css`：注入界面，可覆盖 `--accent` 等变量做主题美化。
+  **注意**：内置暗色调色板写在 `body[data-theme="dark"]` 上（`renderer/styles.css:1228`），而 body 离元素更近、继承时胜出，所以只写 `:root` 的主题在**暗色模式下会被内置蓝色调色板压掉**（看起来"没生效/冲突"）。做法是浅色写 `:root`、暗色再写一条 `body[data-theme="dark"]`：插件样式注入在 `<head>` 末尾，同特异性下后写者胜。
 - `type: 'feature'` + `detect(m)`：返回 `{reason, label}` 会额外标记一张照片的"原因"，`label` 显示在缩略图角标上。
 
 启用 / 停用：在软件右上角的「插件」面板里切换，状态会自动记住。
 
-**内置示例插件**（在插件目录内，供参考，可删）：`theme-teal.js`（青绿主题）、`feature-dark.js`（检测过暗画面）。
+**内置示例插件**（在插件目录内，供参考，可删）：`theme-teal.js`（青绿主题）、`fine-detect.js`（精细检测）。

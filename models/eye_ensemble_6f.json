@@ -1,0 +1,15 @@
+{
+  "version": "eye-ensemble-6f-aligned-v3",
+  "features": ["minBlink", "maxBlink", "minOpenness", "maxOpenness", "ocecMaxOpen", "ocecMinOpen"],
+  "mean": [0.10742875082581103, 0.17596994281178047, 0.2565681560428446, 0.30378953924361046, 0.8717011668707456, 0.6971744162601591],
+  "std": [0.1421897294886017, 0.18237806884236296, 0.08204104628543493, 0.10205959629718507, 0.25073467761139734, 0.3488569958503244],
+  "coef": [0.2147086096146947, 1.1138511628827845, -0.7946106176140479, 0.0, -0.14790710851754474, 0.0],
+  "intercept": -1.6364260331482985,
+  "threshold": 0.88,
+  "n": 349,
+  "n_closed": 36,
+  "metrics_cv": { "threshold": 0.88, "tp": 29, "fp": 6, "fn": 7, "tn": 307, "precision": 0.8285714285714286, "recall": 0.8055555555555556, "f1": 0.8169014084507044 },
+  "feature_source": "runtime canvas 1024px; pixel-space perpendicular eyelid gaps; roll-aligned RGB crops; 3 padding votes",
+  "validation": "5-fold out-of-fold predictions grouped by source image SHA256; metrics before runtime quality gates",
+  "note": "OCEC outputs probability OPEN; fusion outputs probability BOTH eyes CLOSED. Coefficient signs constrained to preserve this direction. Low confidence is not evidence of open eyes."
+}
